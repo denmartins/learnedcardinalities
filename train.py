@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from mscn.util import *
 from mscn.data import get_train_datasets, load_data, make_dataset
 from mscn.model import SetConv
+from mscn.nopredmodel import NoPredSetConv
 
 
 def unnormalize_torch(vals, min_val, max_val):
@@ -84,7 +85,7 @@ def train_and_predict(workload_name, num_queries, num_epochs, batch_size, hid_un
     predicate_feats = len(column2vec) + len(op2vec) + 1
     join_feats = len(join2vec)
 
-    model = SetConv(sample_feats, predicate_feats, join_feats, hid_units)
+    model = NoPredSetConv(sample_feats, predicate_feats, join_feats, hid_units)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -176,6 +177,8 @@ def train_and_predict(workload_name, num_queries, num_epochs, batch_size, hid_un
         for i in range(len(preds_test_unnorm)):
             f.write(str(preds_test_unnorm[i]) + "," + label[i] + "\n")
 
+def debug_main():
+    train_and_predict('synthetic', 10000, 100, 1024, 256, False)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -190,4 +193,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    #main()
+    debug_main()
