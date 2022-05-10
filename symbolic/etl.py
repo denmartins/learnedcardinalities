@@ -1,15 +1,15 @@
 import csv
-import enum
-from matplotlib.pyplot import get
 import numpy as np
 import pandas as pd
+
+ENCODED_DATA_FILEPATH = 'data/encoded_data.csv'
 
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
     for i in range(0, len(l), n):
         yield l[i:i + n]
 
-def load_data(file_name, num_materialized_samples):
+def extract_data(file_name, num_materialized_samples):
     joins = []
     predicates = []
     tables = []
@@ -77,19 +77,92 @@ def encode_one_hot(data):
 
     return [get_one_hot_encoding(d, item2idx) for d in data], item2idx
 
+def min_max_value_encoder(column, value, column_statistics):
+    stats = column_statistics.loc[column_statistics['name'] == column, :]
+    return (value - stats['min'])/(stats['max'] - stats['min'])
 
-def load_and_encode_train_data(num_queries=10000, num_materialized_samples=1000):
+def enconde_predicates(predicates, column_statistics):
+    columns = {p[0] for pred in predicates for p in pred if len(p) == 3}
+    columns = sorted(columns)
+    cols2idx = item2index(columns)
+
+    operators = {p[1] for pred in predicates for p in pred if len(p) == 3}
+    operators = sorted(operators)
+    operator2idx = item2index(operators)
+    
+    #TODO: Get rid of one operator (< or >) by using 1 - value ---> Thanks to Jens :D
+
+    # predicates have size = #one_hot_operators + 1 position for the predicate value
+    chunck_len_predicate = len(operators) + 1
+    vector_len_predicate = len(columns) * chunck_len_predicate
+    
+    predicate_encoding = []
+    for pred in predicates:
+        vec = np.zeros(vector_len_predicate)
+        for p in pred:
+            if len(p) == 3:
+                col, op, val = p
+                chunck = cols2idx[col]
+                operator_position_in_vec = chunck * chunck_len_predicate + operator2idx[op]
+                vec[operator_position_in_vec] = 1
+                vec[operator_position_in_vec+1] = min_max_value_encoder(col, float(val), column_statistics)
+                predicate_encoding.append(vec)
+    
+    return predicate_encoding
+
+def normalize_labels(labels, min_val=None, max_val=None):
+    labels = np.array([np.log(float(l)) for l in labels])
+    if min_val is None:
+        min_val = labels.min()
+        print("min log(label): {}".format(min_val))
+    if max_val is None:
+        max_val = labels.max()
+        print("max log(label): {}".format(max_val))
+    labels_norm = (labels - min_val) / (max_val - min_val)
+    # Threshold labels
+    labels_norm = np.minimum(labels_norm, 1)
+    labels_norm = np.maximum(labels_norm, 0)
+    return labels_norm, min_val, max_val
+
+def unnormalize_labels(labels_norm, min_val, max_val):
+    labels_norm = np.array(labels_norm, dtype=np.float32)
+    labels = (labels_norm * (max_val - min_val)) + min_val
+    return np.array(np.round(np.exp(labels)), dtype=np.int64)
+
+def transform_and_encode_data(num_queries=10000, num_materialized_samples=1000):
     file_name_queries = "data/train"
     file_name_column_min_max_vals = "data/column_min_max_vals.csv"
 
-    joins, predicates, tables, samples, label = load_data(file_name_queries, num_materialized_samples)
+    column_statistics = pd.read_csv(file_name_column_min_max_vals)
+    
+    joins, predicates, tables, samples, label = extract_data(file_name_queries, num_materialized_samples)
+    
+    label_normalized, min_val, max_val = normalize_labels(label)
 
     table_encodings, table2idx = encode_one_hot(tables)
     join_encodings, join2idx = encode_one_hot(joins)
+    predicate_encodings = enconde_predicates(predicates, column_statistics)
 
+    vector_size = len(table2idx.keys()) + len(join2idx.keys()) + predicate_encodings[0].shape[0] + 1
+
+    dataset = []
+    for t,j,p,l in zip(table_encodings, join_encodings, predicate_encodings, label_normalized):
+        vec = np.hstack((t, j))
+        vec = np.hstack((vec, p))
+        vec = np.hstack((vec, l))
+        assert vec.shape[0] == vector_size, f"vec has size {vec.shape[0]}, but should be {vector_size}"
+        dataset.append(vec)
+
+    np.savetxt(ENCODED_DATA_FILEPATH, np.array(dataset), delimiter=',')
+
+    return dataset
+
+def load_dataset():
+    dataset = np.loadtxt(ENCODED_DATA_FILEPATH, delimiter=',')
+    return dataset
 
 def main():
-    load_and_encode_train_data()
+    transform_and_encode_data()
 
 if __name__ == '__main__':
     main()
