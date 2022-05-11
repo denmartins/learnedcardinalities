@@ -1,8 +1,15 @@
 import csv
 import numpy as np
 import pandas as pd
+from dataclasses import dataclass
 
 ENCODED_DATA_FILEPATH = 'data/encoded_data.csv'
+MIN_MAX_LABEL_FILEPATH = 'data/label_min_max.csv'
+
+@dataclass
+class QueryCardinalityDataset:
+    data: np.ndarray
+    labels_min_max_values: np.ndarray
 
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
@@ -137,7 +144,7 @@ def transform_and_encode_data(num_queries=10000, num_materialized_samples=1000):
     
     joins, predicates, tables, samples, label = extract_data(file_name_queries, num_materialized_samples)
     
-    label_normalized, min_val, max_val = normalize_labels(label)
+    label_normalized, min_label_val, max_label_val = normalize_labels(label)
 
     table_encodings, table2idx = encode_one_hot(tables)
     join_encodings, join2idx = encode_one_hot(joins)
@@ -154,12 +161,15 @@ def transform_and_encode_data(num_queries=10000, num_materialized_samples=1000):
         dataset.append(vec)
 
     np.savetxt(ENCODED_DATA_FILEPATH, np.array(dataset), delimiter=',')
+    np.savetxt(MIN_MAX_LABEL_FILEPATH, np.array([min_label_val, max_label_val]), delimiter=',')
 
     return dataset
 
 def load_dataset():
-    dataset = np.loadtxt(ENCODED_DATA_FILEPATH, delimiter=',')
-    return dataset
+    data = np.loadtxt(ENCODED_DATA_FILEPATH, delimiter=',')
+    labels_min_max_values = np.loadtxt(MIN_MAX_LABEL_FILEPATH, delimiter=',')
+    
+    return QueryCardinalityDataset(data, labels_min_max_values)
 
 def main():
     transform_and_encode_data()
