@@ -85,7 +85,7 @@ def train_and_predict(workload_name, num_queries, num_epochs, batch_size, hid_un
     predicate_feats = len(column2vec) + len(op2vec) + 1
     join_feats = len(join2vec)
 
-    model = NoPredSetConv(sample_feats, predicate_feats, join_feats, hid_units)
+    model = SetConv(sample_feats, predicate_feats, join_feats, hid_units)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
